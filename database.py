@@ -1,7 +1,12 @@
+import os
 from pymongo import MongoClient
+from dotenv import load_dotenv
 
-# 🔐 MongoDB Atlas Connection URL
-MONGO_URL = "mongodb+srv://web:YLVC8wjgLOfzERQ7@cluster0.gitqnpn.mongodb.net/users?retryWrites=true&w=majority"
+# Load environment variables
+load_dotenv()
+
+# Get Mongo URI from .env
+MONGO_URL = os.getenv("MONGO_URI")
 
 # Connect to MongoDB
 client = MongoClient(MONGO_URL)
@@ -12,4 +17,4 @@ db = client["agri_db"]
 # Collections
 users = db["users"]
 crops = db["crops"]
-orders = db["orders"]  # optional (you had it earlier)
+orders = db["orders"]
