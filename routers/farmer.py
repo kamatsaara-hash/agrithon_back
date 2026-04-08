@@ -1,6 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, UploadFile, File, Form
 from pydantic import BaseModel
 from typing import List
+import os
 
 from database import crops
 from utils.price_model import predict_price
@@ -30,14 +31,44 @@ class ProfitInput(BaseModel):
 
 
 # -----------------------------
-# 🌾 Add Crop
+# 🌾 Add Crop (MERGED VERSION)
 # -----------------------------
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+
 @router.post("/add-crop")
-def add_crop(crop: CropInput):
-    crops.insert_one(crop.dict())
+async def add_crop(
+    name: str = Form(...),
+    price: float = Form(...),
+    quantity: int = Form(...),
+    farmer_id: str = Form(...),
+    image: UploadFile = File(...)
+):
+    # Save image
+    file_path = os.path.join(UPLOAD_FOLDER, image.filename)
+
+    with open(file_path, "wb") as buffer:
+        buffer.write(await image.read())
+
+    # Combine both logics
+    crop_data = {
+        "name": name,
+        "quantity": quantity,
+        "price": price,
+        "farmer_id": farmer_id,
+        "image_url": file_path,
+        "status": "available"
+    }
+
+    result = crops.insert_one(crop_data)
+
+    # Convert ObjectId to string
+    crop_data["_id"] = str(result.inserted_id)
+
     return {
         "message": "Crop added successfully",
-        "data": crop
+        "data": crop_data
     }
 
 
@@ -48,20 +79,16 @@ def add_crop(crop: CropInput):
 def price_insights(data: PriceInput):
     history = data.history
 
-    # 🔒 Basic validation
     if len(history) < 2:
         return {"error": "At least 2 price values required"}
 
-    # Predict using Random Forest
     predicted = predict_price(history)
 
-    # Handle model error
     if isinstance(predicted, dict):
         return predicted
 
     current_price = history[-1]
 
-    # 🔥 Smart suggestion logic
     if predicted > current_price * 1.05:
         suggestion = "Sell"
     elif predicted < current_price * 0.95:
