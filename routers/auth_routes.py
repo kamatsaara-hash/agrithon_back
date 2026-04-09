@@ -1,24 +1,26 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from database import users
+from passlib.context import CryptContext
 
 router = APIRouter()
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # -----------------------------
 # 📦 Schemas
 # -----------------------------
-
 class SignupInput(BaseModel):
     role: str
-    email: str = None
-    phone: str = None
+    email: str | None = None
+    phone: str | None = None
     password: str
 
 
 class LoginInput(BaseModel):
     role: str
-    email: str = None
-    phone: str = None
+    email: str | None = None
+    phone: str | None = None
     password: str
 
 
@@ -28,27 +30,28 @@ class LoginInput(BaseModel):
 @router.post("/signup")
 def signup(data: SignupInput):
 
-    # Ensure either email or phone is provided
     if not data.email and not data.phone:
-        return {"error": "Provide email or phone"}
+        raise HTTPException(status_code=400, detail="Provide email or phone")
 
-    # Check existing user
-    existing_user = users.find_one({
-        "role": data.role,
-        "$or": [
-            {"email": data.email},
-            {"phone": data.phone}
-        ]
-    })
+    # Build query dynamically
+    query = {"role": data.role}
+    if data.email:
+        query["email"] = data.email
+    if data.phone:
+        query["phone"] = data.phone
+
+    existing_user = users.find_one(query)
 
     if existing_user:
-        return {"error": "User already exists"}
+        raise HTTPException(status_code=400, detail="User already exists")
+
+    hashed_password = pwd_context.hash(data.password)
 
     user = {
         "role": data.role,
         "email": data.email,
         "phone": data.phone,
-        "password": data.password   # ⚠️ plain text (as you requested)
+        "password": hashed_password
     }
 
     users.insert_one(user)
@@ -63,23 +66,22 @@ def signup(data: SignupInput):
 def login(data: LoginInput):
 
     if not data.email and not data.phone:
-        return {"error": "Provide email or phone"}
+        raise HTTPException(status_code=400, detail="Provide email or phone")
 
-    # Find user
-    user = users.find_one({
-        "role": data.role,
-        "$or": [
-            {"email": data.email},
-            {"phone": data.phone}
-        ]
-    })
+    # Build query dynamically
+    query = {"role": data.role}
+    if data.email:
+        query["email"] = data.email
+    if data.phone:
+        query["phone"] = data.phone
+
+    user = users.find_one(query)
 
     if not user:
-        return {"error": "User not found"}
+        raise HTTPException(status_code=404, detail="User not found")
 
-    # Check password directly
-    if user["password"] != data.password:
-        return {"error": "Invalid password"}
+    if not pwd_context.verify(data.password, user["password"]):
+        raise HTTPException(status_code=401, detail="Invalid password")
 
     return {
         "message": "Login successful",
